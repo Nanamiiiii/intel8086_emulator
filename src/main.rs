@@ -253,23 +253,36 @@ pub struct Processor {
 
 #[allow(dead_code, unused_variables)]
 impl Processor {
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.registers.reset();
         self.memory.reset();
     }
 
-    fn fetch_inst(&mut self, cycle: &mut u32) -> Byte {
+    pub fn fetch_inst(&mut self, cycle: &mut u32) -> Byte {
         let data: Byte = self.memory.data[self.registers.ip as usize];
         self.registers.ip += 1;
         *cycle -= 1;
         return data;
     }
 
-    fn execute(&mut self, cycle: &mut u32) {
+    pub fn execute(&mut self, cycle: &mut u32) {
         while *cycle > 0 {
             let inst: Byte = self.fetch_inst(cycle);
+            match inst {
+                InstSets::MOV_EB_GB => {},
+                InstSets::MOV_EV_GV => {},
+                _ => unimplemented!()
+            }
         }
     }
+}
+
+pub struct InstSets;
+
+#[allow(dead_code)]
+impl InstSets {
+    pub const MOV_EB_GB: Byte = 0x88;
+    pub const MOV_EV_GV: Byte = 0x89;
 }
 
 fn main() {
