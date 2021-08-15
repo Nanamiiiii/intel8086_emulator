@@ -109,10 +109,18 @@ impl Registers {
     }
 
     fn reset(&mut self) {
-        self.ip = 0x0000;
+        self.ax(0x0000);
+        self.bx(0x0000);
+        self.cx(0x0000);
+        self.dx(0x0000);
+        self.sp = 0x0000;
+        self.bp = 0x0000;
+        self.si = 0x0000;
+        self.di = 0x0000;
+        self.ip = 0xFFF0;
         self.flags_h = 0x00;
         self.flags_l = 0x00;
-        self.cs = 0xFFFF;
+        self.cs = 0xF000;
         self.ds = 0x0000;
         self.ss = 0x0000;
         self.es = 0x0000;
@@ -216,17 +224,56 @@ impl Regs16<u16> for Registers {
     }
 }
 
+#[repr(C)]
+pub struct Memory {
+    data: [Byte; Self::MAX_MEMSIZE]
+}
+
+#[allow(dead_code)]
+impl Memory {
+    const MAX_MEMSIZE: usize = 1024 * 64;
+
+    fn reset(&mut self) {
+        self.data = [0; Self::MAX_MEMSIZE];
+    }
+}
+
+impl Default for Memory {
+    fn default() -> Self {
+        Memory { data: [0; Self::MAX_MEMSIZE] }
+    }
+}
+
+#[repr(C)]
+#[derive(Default)]
+pub struct Processor {
+    registers: Registers,
+    memory: Memory,
+}
+
+#[allow(dead_code, unused_variables)]
+impl Processor {
+    fn reset(&mut self) {
+        self.registers.reset();
+        self.memory.reset();
+    }
+
+    fn fetch_inst(&mut self, cycle: &mut u32) -> Byte {
+        let data: Byte = self.memory.data[self.registers.ip as usize];
+        self.registers.ip += 1;
+        *cycle -= 1;
+        return data;
+    }
+
+    fn execute(&mut self, cycle: &mut u32) {
+        while *cycle > 0 {
+            let inst: Byte = self.fetch_inst(cycle);
+        }
+    }
+}
+
 fn main() {
-    let mut registers = Registers::default();
-    registers.reset();
-    registers.check_mem_layout();
-    
-    registers.ax(0x7080);
-    println!("ax: 0x{:x}", registers.ax(()));
-    registers.bx(0x23F6);
-    println!("bx: 0x{:x}", registers.bx(()));
-    registers.cx(0xD3F6);
-    println!("cx: 0x{:x}", registers.cx(()));
-    registers.dx(0x2AFC);
-    println!("dx: 0x{:x}", registers.dx(()));
+    let mut processor = Processor::default();
+    processor.reset();
+    processor.execute(&mut 2);
 }
