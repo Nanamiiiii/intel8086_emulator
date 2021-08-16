@@ -22,6 +22,16 @@ pub enum Regname {
     CS, DS, SS, ES,
 }
 
+pub enum RegMem {
+    Reg(Regname),
+    Mem(usize)
+}
+
+pub enum DType {
+    Word,
+    Byte,
+}
+
 /* Structs */
 #[repr(C)]
 pub struct Registers {
@@ -313,42 +323,32 @@ impl Processor {
         while *cycle > 0 {
             let inst: Byte = self.fetch_inst(cycle);
             inst_count += 1;
-            print!("{0: >3}: ", inst_count);
+            print!("{0: >03}: ", inst_count);
             print!("{:x} ", inst);
+
             match inst {
                 InstSets::MOV_EB_GB => { // MOV r/m8 reg8
                     let arg: Byte = self.fetch_inst(cycle);
                     println!("{:x}", arg);
 
-                    let mod_bits: Byte = (arg >> 6) & 0b011;    // higher 2 bits
-                    let reg: Byte = (arg >> 3) & 0b0111;        // 3 bits in the middle
-                    let rm: Byte = arg & 0b0111;                // lower 3 bits
+                    let modrm = Modrm::parse(arg);
 
-                    let src = self.fetch_reg8(reg);
-                    if mod_bits == 0b011 { // Register
-                        let dst = self.fetch_reg8(rm);
-                        self.registers.set_byte(dst, self.registers.get_byte(src));
-                    } else { // Memory address
-                        let dst = self.fetch_modrm(mod_bits, rm);
-                        // TODO: store value to Memory[dst]
-                    };
+                    let src = modrm.fetch_reg(DType::Byte);
+                    let dst = modrm.fetch_rm(DType::Byte);
+
+                    self.store_byte(src, dst);
                 },
+
                 InstSets::MOV_EV_GV => { // MOV r/m16 reg16
                     let arg: Byte = self.fetch_inst(cycle);
                     println!("{:x}", arg);
 
-                    let mod_bits: Byte = (arg >> 6) & 0b011;
-                    let reg: Byte = (arg >> 3) & 0b0111;
-                    let rm: Byte = arg & 0b0111;
+                    let modrm = Modrm::parse(arg);
 
-                    let src = self.fetch_reg16(reg);
-                    if mod_bits == 0b011 {
-                        let dst = self.fetch_reg16(rm);
-                        self.registers.set_word(dst, self.registers.get_word(src));
-                    } else {
-                        let dst = self.fetch_modrm(mod_bits, rm);
-                        // TODO: store value to Memory[dst]
-                    }
+                    let src = modrm.fetch_reg(DType::Word);
+                    let dst = modrm.fetch_rm(DType::Word);
+
+                    self.store_word(src, dst);
                 },
                 _ => unimplemented!()
             }
@@ -360,35 +360,27 @@ impl Processor {
         self.registers.info_registers();
     }
 
-    fn fetch_modrm(&self, mod_bits: u8, rm: u8) -> usize {
-        unimplemented!()
-    }
+    fn store_word(&mut self, src: RegMem, dst: RegMem) {
+        let src_val = match src {
+            RegMem::Reg(regname) => self.registers.get_word(regname),
+            RegMem::Mem(addr) => unimplemented!(),
+        };
 
-    fn fetch_reg8(&self, reg: u8) -> Regname {
-        match reg {
-            0b000 => Regname::AL,
-            0b001 => Regname::CL,
-            0b010 => Regname::DL,
-            0b011 => Regname::BL,
-            0b100 => Regname::AH,
-            0b101 => Regname::CH,
-            0b110 => Regname::DH,
-            0b111 => Regname::BH,
-            _ => panic!()
+        match dst {
+            RegMem::Reg(regname) => self.registers.set_word(regname, src_val),
+            RegMem::Mem(addr) => unimplemented!(),
         }
     }
 
-    fn fetch_reg16(&self, reg: u8) -> Regname {
-        match reg {
-            0b000 => Regname::AX,
-            0b001 => Regname::CX,
-            0b010 => Regname::DX,
-            0b011 => Regname::BX,
-            0b100 => Regname::SP,
-            0b101 => Regname::BP,
-            0b110 => Regname::SI,
-            0b111 => Regname::DI,
-            _ => panic!(),
+    fn store_byte(&mut self, src: RegMem, dst: RegMem) {
+        let src_val = match src {
+            RegMem::Reg(regname) => self.registers.get_byte(regname),
+            RegMem::Mem(addr) => unimplemented!(),
+        };
+        
+        match dst {
+            RegMem::Reg(regname) => self.registers.set_byte(regname, src_val),
+            RegMem::Mem(addr) => unimplemented!(),
         }
     }
 }
@@ -401,20 +393,117 @@ impl InstSets {
     const MOV_EV_GV: Byte = 0x89; // MOV r/m16 reg16
 }
 
-pub struct Modrm;
+#[allow(dead_code)]
+pub struct Modrm {
+    mode: u8,
+    reg_op: u8,
+    r_m: u8,
+}
+
+pub trait RegFetching<T> {
+    fn fetch_reg (&self, args: T) -> RegMem;
+}
 
 #[allow(dead_code)]
 impl Modrm {
-    
+    fn parse(arg: Byte) -> Self {
+        Modrm {
+            mode: (arg >> 6) & 0b011, 
+            reg_op: (arg >> 3) & 0b0111,
+            r_m: arg & 0b0111, 
+        }
+    }
+
+    fn fetch_rm(&self, dtype: DType) ->  RegMem {
+        match self.mode {
+            0 => unimplemented!(),
+            1 => unimplemented!(),
+            2 => unimplemented!(),
+            3 => self.fetch_reg((self.r_m, dtype)),
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl RegFetching<(u8, DType)> for Modrm {
+    fn fetch_reg(&self, (reg_op, dtype): (u8, DType)) -> RegMem {
+        use crate::RegMem::*;
+        match dtype {
+            DType::Byte => {
+                match reg_op {
+                    0b000 => Reg(Regname::AL),
+                    0b001 => Reg(Regname::CL),
+                    0b010 => Reg(Regname::DL),
+                    0b011 => Reg(Regname::BL),
+                    0b100 => Reg(Regname::AH),
+                    0b101 => Reg(Regname::CH),
+                    0b110 => Reg(Regname::DH),
+                    0b111 => Reg(Regname::BH),
+                    _ => panic!()
+                }
+            },
+
+            DType::Word => {
+                match reg_op {
+                    0b000 => Reg(Regname::AX),
+                    0b001 => Reg(Regname::CX),
+                    0b010 => Reg(Regname::DX),
+                    0b011 => Reg(Regname::BX),
+                    0b100 => Reg(Regname::SP),
+                    0b101 => Reg(Regname::BP),
+                    0b110 => Reg(Regname::SI),
+                    0b111 => Reg(Regname::DI),
+                    _ => panic!(),
+                }
+            }
+        }
+    }
+}
+
+impl RegFetching<DType> for Modrm {
+    fn fetch_reg(&self, dtype: DType) -> RegMem {
+        use crate::RegMem::*;
+        match dtype {
+            DType::Byte => {
+                match self.reg_op {
+                    0b000 => Reg(Regname::AL),
+                    0b001 => Reg(Regname::CL),
+                    0b010 => Reg(Regname::DL),
+                    0b011 => Reg(Regname::BL),
+                    0b100 => Reg(Regname::AH),
+                    0b101 => Reg(Regname::CH),
+                    0b110 => Reg(Regname::DH),
+                    0b111 => Reg(Regname::BH),
+                    _ => panic!()
+                }
+            },
+
+            DType::Word => {
+                match self.reg_op {
+                    0b000 => Reg(Regname::AX),
+                    0b001 => Reg(Regname::CX),
+                    0b010 => Reg(Regname::DX),
+                    0b011 => Reg(Regname::BX),
+                    0b100 => Reg(Regname::SP),
+                    0b101 => Reg(Regname::BP),
+                    0b110 => Reg(Regname::SI),
+                    0b111 => Reg(Regname::DI),
+                    _ => panic!(),
+                }
+            }
+        }
+    }
 }
 
 fn main() {
     let mut processor = Processor::default();
     processor.reset();
     let pc = processor.registers.ip as usize;
-    processor.registers.set_word(Regname::AX, 0xAC24);
-    processor.memory.data[pc] = 0x89;
+    processor.registers.set_byte(Regname::AL, 0x24);
+    processor.memory.data[pc] = 0x88;
     processor.memory.data[pc + 1] = 0xC1;
+    processor.memory.data[pc + 2] = 0x89;
+    processor.memory.data[pc + 3] = 0xCA;
 
-    processor.execute(&mut 2);
+    processor.execute(&mut 4);
 }
