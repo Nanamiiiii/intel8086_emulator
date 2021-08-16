@@ -9,6 +9,19 @@
 type Word = u16;
 type Byte = u8;
 
+/* enums */
+pub enum Regname {
+    AL, AH,
+    BL, BH,
+    CL, CH,
+    DL, DH,
+    AX, BX, CX, DX,
+    SP, BP, SI, DI,
+    IP,
+    FlagsL, FlagsH,
+    CS, DS, SS, ES,
+}
+
 /* Structs */
 #[repr(C)]
 pub struct Registers {
@@ -76,13 +89,6 @@ impl Default for Registers {
     }
 }
 
-pub trait Regs16<T> {
-    fn ax(&mut self, val: T) -> &u16;
-    fn bx(&mut self, val: T) -> &u16;
-    fn cx(&mut self, val: T) -> &u16;
-    fn dx(&mut self, val: T) -> &u16;
-}
-
 #[allow(dead_code)]
 impl Registers {
     fn check_mem_layout(&self) {
@@ -106,13 +112,19 @@ impl Registers {
         assert_eq!(ptr_ch as usize, ptr_cl as usize + 1);
         assert_eq!(ptr_dh as usize, ptr_dl as usize + 1);
         assert_eq!(ptr_fh as usize, ptr_fl as usize + 1);
+        println!("Register layout check passed.");
     }
 
     fn reset(&mut self) {
-        self.ax(0x0000);
-        self.bx(0x0000);
-        self.cx(0x0000);
-        self.dx(0x0000);
+        self.check_mem_layout();
+        self.al = 0x00;
+        self.ah = 0x00;
+        self.bl = 0x00;
+        self.bh = 0x00;
+        self.cl = 0x00;
+        self.ch = 0x00;
+        self.dl = 0x00;
+        self.dh = 0x00;
         self.sp = 0x0000;
         self.bp = 0x0000;
         self.si = 0x0000;
@@ -124,108 +136,122 @@ impl Registers {
         self.ds = 0x0000;
         self.ss = 0x0000;
         self.es = 0x0000;
-    }
-}
 
-#[allow(unused_variables)]
-impl Regs16<()> for Registers {
-    fn ax(&mut self, val: ()) -> &u16 {
-        unsafe {
-            match self.ax.as_ref() {
-                Some(ref_val) => ref_val,
-                _ => panic!()
-            }
+        // Setup 16bit registers
+        self.ax = &self.al as *const Byte as usize as *const Word;
+        self.bx = &self.bl as *const Byte as usize as *const Word;
+        self.cx = &self.cl as *const Byte as usize as *const Word;
+        self.dx = &self.dl as *const Byte as usize as *const Word;
+    }
+
+    fn get_byte(&self, name: Regname) -> Byte {
+        match name {
+            Regname::AL => self.al,
+            Regname::AH => self.ah,
+            Regname::BL => self.bl,
+            Regname::BH => self.bh,
+            Regname::CL => self.cl,
+            Regname::CH => self.ch,
+            Regname::DL => self.dl,
+            Regname::DH => self.dh,
+            Regname::FlagsL => self.flags_l,
+            Regname::FlagsH => self.flags_h,
+            _ => unimplemented!()
         }
     }
 
-    fn bx(&mut self, val: ()) -> &u16 {
-        unsafe {
-            match self.bx.as_ref() {
-                Some(ref_val) => ref_val,
-                _ => panic!()
-            }
+    fn set_byte(&mut self, name: Regname, value: Byte) {
+        match name {
+            Regname::AL => self.al = value,
+            Regname::AH => self.ah = value,
+            Regname::BL => self.bl = value,
+            Regname::BH => self.bh = value,
+            Regname::CL => self.cl = value,
+            Regname::CH => self.ch = value,
+            Regname::DL => self.dl = value,
+            Regname::DH => self.dh = value,
+            Regname::FlagsL => self.flags_l = value,
+            Regname::FlagsH => self.flags_h = value,
+            _ => unimplemented!(),
         }
     }
 
-    fn cx(&mut self, val: ()) -> &u16 {
-        unsafe {
-            match self.cx.as_ref() {
-                Some(ref_val) => ref_val,
-                _ => panic!()
-            }
+    fn get_word(&self, name: Regname) -> Word {
+        match name {
+            Regname::AX => unsafe { 
+                match self.ax.as_ref() {
+                    Some(&value) => value,
+                    None => panic!()
+                } 
+            },
+            Regname::BX => unsafe { 
+                match self.bx.as_ref() {
+                    Some(&value) => value,
+                    None => panic!()
+                }
+            },
+            Regname::CX => unsafe { 
+                match self.cx.as_ref() {
+                    Some(&value) => value,
+                    None => panic!()
+                }
+            },
+            Regname::DX => unsafe { 
+                match self.dx.as_ref() {
+                    Some(&value) => value,
+                    None => panic!()
+                }
+            },
+            Regname::SP => self.sp,
+            Regname::BP => self.bp,
+            Regname::SI => self.si,
+            Regname::DI => self.di,
+            Regname::IP => self.ip,
+            Regname::CS => self.cs,
+            Regname::DS => self.ds,
+            Regname::SS => self.ss,
+            Regname::ES => self.es,
+            _ => unimplemented!(),
         }
     }
 
-    fn dx(&mut self, val: ()) -> &u16 {
-        unsafe {
-            match self.dx.as_ref() {
-                Some(ref_val) => ref_val,
-                _ => panic!()
-            }
-        }
-    }
-}
-
-impl Regs16<u16> for Registers {
-    fn ax(&mut self, val: u16) -> &u16 {
-        self.al = (val & 0x00FF) as u8;
-        self.ah = (val >> 8) as u8;
-        unsafe {
-            match self.ax.as_ref() {
-                Some(ref_val) => {
-                    assert_eq!(*ref_val, val);
-                    ref_val
-                },
-                _ => panic!()
-            }
-        }
-    }
-
-    fn bx(&mut self, val: u16) -> &u16 {
-        self.bl = (val & 0x00FF) as u8;
-        self.bh = (val >> 8) as u8;
-        unsafe {
-            match self.bx.as_ref() {
-                Some(ref_val) => {
-                    assert_eq!(*ref_val, val);
-                    ref_val
-                },
-                _ => panic!()
-            }
-        }
-    }
-
-    fn cx(&mut self, val: u16) -> &u16 {
-        self.cl = (val & 0x00FF) as u8;
-        self.ch = (val >> 8) as u8;
-        unsafe {
-            match self.cx.as_ref() {
-                Some(ref_val) => {
-                    assert_eq!(*ref_val, val);
-                    ref_val
-                },
-                _ => panic!()
-            }
-        }
-    }
-
-    fn dx(&mut self, val: u16) -> &u16 {
-        self.dl = (val & 0x00FF) as u8;
-        self.dh = (val >> 8) as u8;
-        unsafe {
-            match self.dx.as_ref() {
-                Some(ref_val) => {
-                    assert_eq!(*ref_val, val);
-                    ref_val
-                },
-                _ => panic!()
-            }
+    fn set_word(&mut self, name: Regname, value: Word) {
+        match name {
+            Regname::AX => { 
+                self.al = (value & 0x00FF) as u8;
+                self.ah = (value >> 8) as u8;
+            },
+            Regname::BX => {
+                self.bl = (value & 0x00FF) as u8;
+                self.bh = (value >> 8) as u8;
+            },
+            Regname::CX => {
+                self.cl = (value & 0x00FF) as u8;
+                self.ch = (value >> 8) as u8;
+            },
+            Regname::DX => {
+                self.dl = (value & 0x00FF) as u8;
+                self.dh = (value >> 8) as u8;
+            },
+            Regname::SP => self.sp = value,
+            Regname::BP => self.bp = value,
+            Regname::SI => self.si = value,
+            Regname::DI => self.di = value,
+            Regname::IP => self.ip = value,
+            Regname::CS => self.cs = value,
+            Regname::DS => self.ds = value,
+            Regname::SS => self.ss = value,
+            Regname::ES => self.es = value,
+            _ => unimplemented!(),
         }
     }
 }
 
 #[repr(C)]
 pub struct Memory {
+    /* 
+        Now, this has a single 64KB segment
+    */
     data: [Byte; Self::MAX_MEMSIZE]
 }
 
@@ -266,13 +292,66 @@ impl Processor {
     }
 
     pub fn execute(&mut self, cycle: &mut u32) {
+        let mut inst_count = 0;
+        println!("Execute...");
         while *cycle > 0 {
             let inst: Byte = self.fetch_inst(cycle);
+            inst_count += 1;
+            print!("{0: >3}: ", inst_count);
+            print!("\t{:x} ", inst);
             match inst {
-                InstSets::MOV_EB_GB => {},
+                InstSets::MOV_EB_GB => { // MOV r/m8 reg8
+                    let arg: Byte = self.fetch_inst(cycle);
+                    println!("{:x}", arg);
+                    let mod_bits: Byte = (arg >> 6) & 0b011;
+                    let reg: Byte = (arg >> 3) & 0b0111;
+                    let rm: Byte = arg & 0b0111;
+
+                    let src = self.fetch_reg8(reg);
+                    if mod_bits == 0b011 {
+                        let dst = self.fetch_reg8(rm);
+                        self.registers.set_byte(dst, self.registers.get_byte(src));
+                    } else {
+                        let dst = self.fetch_modrm(mod_bits, rm);
+                        // TODO: store value to Memory[dst]
+                    };
+                },
                 InstSets::MOV_EV_GV => {},
                 _ => unimplemented!()
             }
+        }
+        println!("Finished execution.");
+    }
+
+    fn fetch_modrm(&self, mod_bits: u8, rm: u8) -> usize {
+        unimplemented!()
+    }
+
+    fn fetch_reg8(&self, reg: u8) -> Regname {
+        match reg {
+            0b000 => Regname::AL,
+            0b001 => Regname::CL,
+            0b010 => Regname::DL,
+            0b011 => Regname::BL,
+            0b100 => Regname::AH,
+            0b101 => Regname::CH,
+            0b110 => Regname::DH,
+            0b111 => Regname::BH,
+            _ => panic!()
+        }
+    }
+
+    fn fetch_reg16(&self, reg: u8) -> Regname {
+        match reg {
+            0b000 => Regname::AX,
+            0b001 => Regname::CX,
+            0b010 => Regname::DX,
+            0b011 => Regname::BX,
+            0b100 => Regname::SP,
+            0b101 => Regname::BP,
+            0b110 => Regname::SI,
+            0b111 => Regname::DI,
+            _ => panic!(),
         }
     }
 }
@@ -281,12 +360,27 @@ pub struct InstSets;
 
 #[allow(dead_code)]
 impl InstSets {
-    pub const MOV_EB_GB: Byte = 0x88;
-    pub const MOV_EV_GV: Byte = 0x89;
+    const MOV_EB_GB: Byte = 0x88; // MOV r/m8 reg8
+    const MOV_EV_GV: Byte = 0x89;
+}
+
+pub struct Modrm;
+
+#[allow(dead_code)]
+impl Modrm {
+    
 }
 
 fn main() {
     let mut processor = Processor::default();
     processor.reset();
+    let pc = processor.registers.ip as usize;
+    processor.registers.set_byte(Regname::AL, 0x24);
+    processor.memory.data[pc] = 0x88;
+    processor.memory.data[pc + 1] = 0xC1;
+    println!("AL: 0x{:x}, CL: 0x{:x}", processor.registers.get_byte(Regname::AL), processor.registers.get_byte(Regname::CL));
+
     processor.execute(&mut 2);
+
+    println!("AL: 0x{:x}, CL: 0x{:x}", processor.registers.get_byte(Regname::AL), processor.registers.get_byte(Regname::CL));
 }
