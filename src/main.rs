@@ -112,7 +112,7 @@ impl Registers {
         assert_eq!(ptr_ch as usize, ptr_cl as usize + 1);
         assert_eq!(ptr_dh as usize, ptr_dl as usize + 1);
         assert_eq!(ptr_fh as usize, ptr_fl as usize + 1);
-        println!("Register layout check passed.");
+        println!("Register layout check passed.\n");
     }
 
     fn reset(&mut self) {
@@ -144,7 +144,7 @@ impl Registers {
         self.dx = &self.dl as *const Byte as usize as *const Word;
     }
 
-    fn get_byte(&self, name: Regname) -> Byte {
+    pub fn get_byte(&self, name: Regname) -> Byte {
         match name {
             Regname::AL => self.al,
             Regname::AH => self.ah,
@@ -160,7 +160,7 @@ impl Registers {
         }
     }
 
-    fn set_byte(&mut self, name: Regname, value: Byte) {
+    pub fn set_byte(&mut self, name: Regname, value: Byte) {
         match name {
             Regname::AL => self.al = value,
             Regname::AH => self.ah = value,
@@ -176,7 +176,7 @@ impl Registers {
         }
     }
 
-    fn get_word(&self, name: Regname) -> Word {
+    pub fn get_word(&self, name: Regname) -> Word {
         match name {
             Regname::AX => unsafe { 
                 match self.ax.as_ref() {
@@ -215,7 +215,7 @@ impl Registers {
         }
     }
 
-    fn set_word(&mut self, name: Regname, value: Word) {
+    pub fn set_word(&mut self, name: Regname, value: Word) {
         match name {
             Regname::AX => { 
                 self.al = (value & 0x00FF) as u8;
@@ -244,6 +244,16 @@ impl Registers {
             Regname::ES => self.es = value,
             _ => unimplemented!(),
         }
+    }
+
+    pub fn info_registers(&self) {
+        println!("[Information of Registers]");
+        println!("AX: 0x{:04x}\tCX: 0x{:04x}\tDX: 0x{:04x}\tBX: 0x{:04x}", self.get_word(Regname::AX), self.get_word(Regname::CX), self.get_word(Regname::DX), self.get_word(Regname::BX));
+        println!("SP: 0x{:04x}\tBP: 0x{:04x}\tSI: 0x{:04x}\tDI: 0x{:04x}", self.get_word(Regname::SP), self.get_word(Regname::BP), self.get_word(Regname::SI), self.get_word(Regname::DI));
+        println!("IP: 0x{:04x}", self.get_word(Regname::IP));
+        println!("FLAGS: 0x{0:02x}{1:02x} ({0:08b}{1:08b})", self.get_byte(Regname::FlagsH), self.get_byte(Regname::FlagsL));
+        println!("CS: 0x{:04x}\tDS: 0x{:04x}\tSS: 0x{:04x}\tES: 0x{:04x}", self.get_word(Regname::CS), self.get_word(Regname::DS), self.get_word(Regname::SS), self.get_word(Regname::ES));
+        println!();
     }
 }
 
@@ -293,34 +303,61 @@ impl Processor {
 
     pub fn execute(&mut self, cycle: &mut u32) {
         let mut inst_count = 0;
+        let executed_cycle = *cycle;
+
+        self.registers.info_registers();
+
         println!("Execute...");
+
+        // Execution Loop
         while *cycle > 0 {
             let inst: Byte = self.fetch_inst(cycle);
             inst_count += 1;
             print!("{0: >3}: ", inst_count);
-            print!("\t{:x} ", inst);
+            print!("{:x} ", inst);
             match inst {
                 InstSets::MOV_EB_GB => { // MOV r/m8 reg8
                     let arg: Byte = self.fetch_inst(cycle);
                     println!("{:x}", arg);
-                    let mod_bits: Byte = (arg >> 6) & 0b011;
-                    let reg: Byte = (arg >> 3) & 0b0111;
-                    let rm: Byte = arg & 0b0111;
+
+                    let mod_bits: Byte = (arg >> 6) & 0b011;    // higher 2 bits
+                    let reg: Byte = (arg >> 3) & 0b0111;        // 3 bits in the middle
+                    let rm: Byte = arg & 0b0111;                // lower 3 bits
 
                     let src = self.fetch_reg8(reg);
-                    if mod_bits == 0b011 {
+                    if mod_bits == 0b011 { // Register
                         let dst = self.fetch_reg8(rm);
                         self.registers.set_byte(dst, self.registers.get_byte(src));
-                    } else {
+                    } else { // Memory address
                         let dst = self.fetch_modrm(mod_bits, rm);
                         // TODO: store value to Memory[dst]
                     };
                 },
-                InstSets::MOV_EV_GV => {},
+                InstSets::MOV_EV_GV => { // MOV r/m16 reg16
+                    let arg: Byte = self.fetch_inst(cycle);
+                    println!("{:x}", arg);
+
+                    let mod_bits: Byte = (arg >> 6) & 0b011;
+                    let reg: Byte = (arg >> 3) & 0b0111;
+                    let rm: Byte = arg & 0b0111;
+
+                    let src = self.fetch_reg16(reg);
+                    if mod_bits == 0b011 {
+                        let dst = self.fetch_reg16(rm);
+                        self.registers.set_word(dst, self.registers.get_word(src));
+                    } else {
+                        let dst = self.fetch_modrm(mod_bits, rm);
+                        // TODO: store value to Memory[dst]
+                    }
+                },
                 _ => unimplemented!()
             }
-        }
+        } // End of execution loop
+
         println!("Finished execution.");
+        println!("{} Cycle(s) executed.\n", executed_cycle);
+
+        self.registers.info_registers();
     }
 
     fn fetch_modrm(&self, mod_bits: u8, rm: u8) -> usize {
@@ -361,7 +398,7 @@ pub struct InstSets;
 #[allow(dead_code)]
 impl InstSets {
     const MOV_EB_GB: Byte = 0x88; // MOV r/m8 reg8
-    const MOV_EV_GV: Byte = 0x89;
+    const MOV_EV_GV: Byte = 0x89; // MOV r/m16 reg16
 }
 
 pub struct Modrm;
@@ -375,12 +412,9 @@ fn main() {
     let mut processor = Processor::default();
     processor.reset();
     let pc = processor.registers.ip as usize;
-    processor.registers.set_byte(Regname::AL, 0x24);
-    processor.memory.data[pc] = 0x88;
+    processor.registers.set_word(Regname::AX, 0xAC24);
+    processor.memory.data[pc] = 0x89;
     processor.memory.data[pc + 1] = 0xC1;
-    println!("AL: 0x{:x}, CL: 0x{:x}", processor.registers.get_byte(Regname::AL), processor.registers.get_byte(Regname::CL));
 
     processor.execute(&mut 2);
-
-    println!("AL: 0x{:x}, CL: 0x{:x}", processor.registers.get_byte(Regname::AL), processor.registers.get_byte(Regname::CL));
 }
